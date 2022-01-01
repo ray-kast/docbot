@@ -1,9 +1,11 @@
-use crate::Result;
+use std::collections::{hash_map::Entry, HashMap};
+
 use anyhow::anyhow;
 use lazy_static::lazy_static;
 use proc_macro2::Span;
 use regex::{Regex, RegexBuilder};
-use std::collections::{hash_map::Entry, HashMap};
+
+use crate::Result;
 
 #[derive(Clone, Debug)]
 pub enum RestArg {
@@ -36,7 +38,7 @@ pub struct CommandSetDocs {
 }
 
 pub trait ParseDocs: Sized {
-    fn parse_docs(docs: Vec<(String, Span)>) -> Result<Self>;
+    fn parse_docs(docs: Vec<(String, Span)>, fallback_span: Span) -> Result<Self>;
 
     fn no_docs() -> Result<Self, anyhow::Error>;
 }
@@ -44,19 +46,16 @@ pub trait ParseDocs: Sized {
 fn take_paragraph<I: Iterator<Item = (String, Span)>>(
     docs: &mut I,
     preserve_lines: bool,
-) -> Option<String>
-{
+) -> Option<(String, Span)> {
     let mut ret = String::new();
-    let mut first = true;
+    let mut ret_span = None;
 
-    for (string, _) in docs {
+    for (string, span) in docs {
         let trimmed = string.trim();
 
         if trimmed.is_empty() {
             break;
         }
-
-        first = false;
 
         if preserve_lines {
             ret.push_str(string.as_ref());
@@ -68,17 +67,17 @@ fn take_paragraph<I: Iterator<Item = (String, Span)>>(
 
             ret.push_str(trimmed);
         }
+
+        ret_span = Some(ret_span.map_or(span, |r: Span| r.join(span).unwrap()));
     }
 
-    if first {
-        None
-    } else {
-        Some(ret)
-    }
+    ret_span.map(|s| (ret, s))
 }
 
-fn parse_usage_line((input, span): (String, Span), desc: String) -> Result<CommandUsage> {
+fn parse_usage_desc((par, span): (String, Span)) -> Result<CommandUsage> {
     lazy_static! {
+        static ref USAGE_SPLIT_RE: Regex =
+            Regex::new(r"^\s*`((?:[^`]|``)*)`(?:\s*:)?\s*(.*)\s*$").unwrap();
         static ref COMMAND_IDS_RE: Regex =
             Regex::new(r"^\s*(?:([^\(]\S*)|\(\s*([^\)]*)\))").unwrap();
         static ref PIPE_RE: Regex = Regex::new(r"\s*\|\s*").unwrap();
@@ -91,9 +90,18 @@ fn parse_usage_line((input, span): (String, Span), desc: String) -> Result<Comma
         static ref TRAILING_RE: Regex = Regex::new(r"\S").unwrap();
     }
 
-    let mut input = input.as_str();
+    let (mut usage, desc) = {
+        let caps = USAGE_SPLIT_RE.captures(&par).ok_or_else(|| {
+            (
+                anyhow!("Invalid usage paragraph, format should be `<usage>` <description>"),
+                span,
+            )
+        })?;
 
-    let ids_match = COMMAND_IDS_RE.captures(input).ok_or_else(|| {
+        (caps.get(1).unwrap().as_str(), caps[2].to_owned())
+    };
+
+    let ids_match = COMMAND_IDS_RE.captures(usage).ok_or_else(|| {
         (
             anyhow!("invalid command ID specifier, expected e.g. 'foo' or '(foo|bar)'"),
             span,
@@ -101,29 +109,29 @@ fn parse_usage_line((input, span): (String, Span), desc: String) -> Result<Comma
     })?;
 
     let ids = if let Some(cap) = ids_match.get(2) {
-        PIPE_RE.split(cap.as_str()).map(|s| s.into()).collect()
+        PIPE_RE.split(cap.as_str()).map(Into::into).collect()
     } else {
         vec![ids_match[1].into()]
     };
 
-    input = &input[ids_match.get(0).unwrap().end()..];
+    usage = &usage[ids_match.get(0).unwrap().end()..];
 
     let mut required = vec![];
-    while let Some(req) = REQUIRED_ARG_RE.captures(input) {
+    while let Some(req) = REQUIRED_ARG_RE.captures(usage) {
         required.push(req[1].into());
 
-        input = &input[req.get(0).unwrap().end()..];
+        usage = &usage[req.get(0).unwrap().end()..];
     }
 
     let mut optional = vec![];
-    while let Some(opt) = OPTIONAL_ARG_RE.captures(input) {
+    while let Some(opt) = OPTIONAL_ARG_RE.captures(usage) {
         optional.push(opt[1].into());
 
-        input = &input[opt.get(0).unwrap().end()..];
+        usage = &usage[opt.get(0).unwrap().end()..];
     }
 
-    let rest = REST_ARG_RE.captures(input).map_or(RestArg::None, |rest| {
-        input = &input[rest.get(0).unwrap().end()..];
+    let rest = REST_ARG_RE.captures(usage).map_or(RestArg::None, |rest| {
+        usage = &usage[rest.get(0).unwrap().end()..];
 
         rest.get(2).map_or_else(
             || RestArg::Required(rest[1].into()),
@@ -131,8 +139,8 @@ fn parse_usage_line((input, span): (String, Span), desc: String) -> Result<Comma
         )
     });
 
-    if TRAILING_RE.is_match(input) {
-        return Err((anyhow!("trailing string {:?}", input), span));
+    if TRAILING_RE.is_match(usage) {
+        return Err((anyhow!("trailing string {:?}", usage), span));
     }
 
     Ok(CommandUsage {
@@ -156,8 +164,7 @@ fn parse_argument_lines(
     span: Span,
     usage: &CommandUsage,
     s: impl AsRef<str>,
-) -> Result<Vec<(String, bool, String)>>
-{
+) -> Result<Vec<(String, bool, String)>> {
     lazy_static! {
         static ref ARGUMENT_RE: Regex =
             RegexBuilder::new(r"^\s*([^\n\s](?:[^:\n]*[^:\n\s])?)\s*:\s*")
@@ -180,7 +187,7 @@ fn parse_argument_lines(
                 return Err((
                     anyhow!("duplicate argument description {:?}", o.key()),
                     span,
-                ))
+                ));
             },
             Entry::Vacant(v) => {
                 v.insert(relax_lines(&s[caps.get(0).unwrap().end()..end]));
@@ -240,7 +247,7 @@ fn parse_argument_lines(
 }
 
 impl ParseDocs for CommandDocs {
-    fn parse_docs(docs: Vec<(String, Span)>) -> Result<Self> {
+    fn parse_docs(docs: Vec<(String, Span)>, fallback_span: Span) -> Result<Self> {
         let span = docs
             .iter()
             .map(|(_, s)| s)
@@ -248,21 +255,20 @@ impl ParseDocs for CommandDocs {
                 None => Some(Some(*curr)),
                 Some(p) => Some(p.and_then(|p| p.join(*curr))),
             })
-            .unwrap()
-            .unwrap();
+            .flatten()
+            .unwrap_or(fallback_span);
 
         let mut docs = docs.into_iter();
 
-        let usage = docs.next().unwrap();
-        let desc = take_paragraph(&mut docs, false).unwrap_or_else(String::new);
-
-        let usage = parse_usage_line(usage, desc)?;
+        let usage_desc =
+            take_paragraph(&mut docs, false).unwrap_or_else(|| (String::new(), fallback_span));
+        let usage = parse_usage_desc(usage_desc)?;
 
         let mut summary = None;
         let mut args = None;
         let mut examples = None;
 
-        while let Some(par) = take_paragraph(&mut docs, true) {
+        while let Some((par, span)) = take_paragraph(&mut docs, true) {
             lazy_static! {
                 static ref HEADER_RE: Regex = Regex::new(r"^\s*#\s*(\S+)\s*\n").unwrap();
             }
@@ -278,21 +284,21 @@ impl ParseDocs for CommandDocs {
                         return Err((anyhow!("multiple summary sections found"), span));
                     }
 
-                    summary = Some(relax_lines(rest))
+                    summary = Some(relax_lines(rest));
                 },
                 "arguments" | "parameters" => {
                     if args.is_some() {
                         return Err((anyhow!("multiple arguments sections found"), span));
                     }
 
-                    args = Some(parse_argument_lines(span, &usage, rest)?)
+                    args = Some(parse_argument_lines(span, &usage, rest)?);
                 },
                 "examples" => {
                     if examples.is_some() {
                         return Err((anyhow!("multiple examples sections found"), span));
                     }
 
-                    examples = Some(relax_lines(rest))
+                    examples = Some(relax_lines(rest));
                 },
                 _ => (),
             }
@@ -317,7 +323,7 @@ impl ParseDocs for CommandDocs {
 }
 
 impl ParseDocs for CommandSetDocs {
-    fn parse_docs(docs: Vec<(String, Span)>) -> Result<Self> {
+    fn parse_docs(docs: Vec<(String, Span)>, fallback_span: Span) -> Result<Self> {
         let span = docs
             .iter()
             .map(|(_, s)| s)
@@ -325,18 +331,20 @@ impl ParseDocs for CommandSetDocs {
                 None => Some(Some(*curr)),
                 Some(p) => Some(p.and_then(|p| p.join(*curr))),
             })
-            .unwrap()
-            .unwrap();
+            .flatten()
+            .unwrap_or(fallback_span);
 
         let mut docs = docs.into_iter();
         let mut summary = String::new();
 
-        while let Some(par) = take_paragraph(&mut docs, false) {
+        while let Some((par, span)) = take_paragraph(&mut docs, false) {
             if !summary.is_empty() {
                 summary.push('\n');
             }
 
             summary.push_str(&par);
+
+            let _ = span; // TODO: here just in case
         }
 
         let summary = summary.trim();
@@ -358,7 +366,7 @@ impl ParseDocs for CommandSetDocs {
 }
 
 impl ParseDocs for () {
-    fn parse_docs(_: Vec<(String, Span)>) -> Result<Self> { Ok(()) }
+    fn parse_docs(_: Vec<(String, Span)>, _: Span) -> Result<Self> { Ok(()) }
 
     fn no_docs() -> Result<Self, anyhow::Error> { Ok(()) }
 }

@@ -1,6 +1,7 @@
 #![warn(missing_docs, clippy::all, clippy::pedantic)]
-#![deny(broken_intra_doc_links, missing_debug_implementations)]
+#![deny(rustdoc::broken_intra_doc_links, missing_debug_implementations)]
 #![allow(clippy::module_name_repetitions)]
+#![feature(box_into_inner)]
 
 //! Create a chatbot command interface using a docopt-like API
 
@@ -10,7 +11,14 @@ use std::{
     fmt::{Display, Formatter},
     str::FromStr,
 };
+
 use thiserror::Error;
+
+mod fold_error;
+mod tokenize;
+
+pub use fold_error::{Downcast, FoldError};
+pub use tokenize::tokenize_str_simple;
 
 /// Error type for failures when parsing a command ID
 #[derive(Error, Debug)]
@@ -158,5 +166,5 @@ pub trait Help: Command {
 
 /// Common traits and types used with this crate
 pub mod prelude {
-    pub use super::{Command, CommandId, Docbot, Help};
+    pub use super::{Command, CommandId, Docbot, FoldError, Help};
 }

@@ -1,5 +1,5 @@
 #![warn(missing_docs, clippy::all, clippy::pedantic)]
-#![deny(broken_intra_doc_links, missing_debug_implementations)]
+#![deny(rustdoc::broken_intra_doc_links, missing_debug_implementations)]
 #![allow(clippy::module_name_repetitions)]
 #![feature(proc_macro_diagnostic)]
 

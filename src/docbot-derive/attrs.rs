@@ -45,7 +45,7 @@ fn parse_core<O: ParseOpts, D: ParseDocs>(attrs: &[Attribute], span: Span) -> Re
         if docs.is_empty() {
             D::no_docs().map_err(|e| (e, span))
         } else {
-            D::parse_docs(docs)
+            D::parse_docs(docs, span)
         }?,
     ))
 }

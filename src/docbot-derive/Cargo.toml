@@ -1,8 +1,14 @@
 [package]
 name = "docbot-derive"
-version = "0.1.0"
-authors = ["rookie1024 <rookie1286@gmail.com>"]
-edition = "2018"
+version = "0.2.0-alpha.1"
+authors = ["raykast <rookie1286@gmail.com>"]
+edition = "2021"
+description = "Derive macros for docbot"
+documentation = "https://docs.rs/docbot-derive/"
+repository = "https://github.com/ray-kast/docbot"
+license = "MIT OR Apache-2.0"
+keywords = ["chatbot", "repl"]
+category = ["command-line-interface", "parsing"]
 
 [lib]
 name = "docbot_derive"
