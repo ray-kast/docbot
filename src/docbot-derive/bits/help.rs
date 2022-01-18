@@ -1,19 +1,17 @@
-#[allow(clippy::wildcard_imports)]
-use super::inputs::*;
-use crate::Result;
 use proc_macro2::{Literal, TokenStream};
 use quote::quote_spanned;
+
+use super::inputs::prelude::*;
 
 pub struct HelpParts {
     pub items: Option<TokenStream>,
 }
 
-fn emit_bool(b: bool) -> TokenStream {
-    use quote::quote;
+fn emit_bool(span: Span, b: bool) -> TokenStream {
     if b {
-        quote! { true }
+        quote_spanned! { span => true }
     } else {
-        quote! { false }
+        quote_spanned! { span => false }
     }
 }
 
@@ -25,29 +23,29 @@ struct ArgUsage<'a> {
 
 fn emit_usage(docs: &CommandDocs) -> TokenStream {
     let CommandDocs { span, usage, .. } = docs;
-    let ids = usage.ids.iter().map(|i| Literal::string(&i));
+    let ids = usage.ids.iter().map(|i| Literal::string(i));
     let args = usage
         .required
         .iter()
         .map(|n| ArgUsage {
-            name: &n,
+            name: n,
             required: true,
             rest: false,
         })
         .chain(usage.optional.iter().map(|n| ArgUsage {
-            name: &n,
+            name: n,
             required: false,
             rest: false,
         }))
         .chain(match usage.rest {
             RestArg::None => None,
             RestArg::Optional(ref n) => Some(ArgUsage {
-                name: &n,
+                name: n,
                 required: false,
                 rest: true,
             }),
             RestArg::Required(ref n) => Some(ArgUsage {
-                name: &n,
+                name: n,
                 required: true,
                 rest: true,
             }),
@@ -59,8 +57,8 @@ fn emit_usage(docs: &CommandDocs) -> TokenStream {
                  rest,
              }| {
                 let name = Literal::string(name);
-                let required = emit_bool(required);
-                let rest = emit_bool(rest);
+                let required = emit_bool(*span, required);
+                let rest = emit_bool(*span, rest);
 
                 quote_spanned! { *span =>
                     ::docbot::ArgumentUsage {
@@ -86,16 +84,16 @@ fn emit_desc(docs: &CommandDocs) -> TokenStream {
     let summary = docs.summary.as_ref().map_or_else(
         || quote_spanned! { docs.span => None },
         |summary| {
-            let summary = Literal::string(&summary);
+            let summary = Literal::string(summary);
 
             quote_spanned! { docs.span => Some(#summary) }
         },
     );
 
     let args = docs.args.iter().map(|(name, required, desc)| {
-        let name = Literal::string(&name);
-        let required = emit_bool(*required);
-        let desc = Literal::string(&desc);
+        let name = Literal::string(name);
+        let required = emit_bool(docs.span, *required);
+        let desc = Literal::string(desc);
 
         quote_spanned! { docs.span =>
             ::docbot::ArgumentDesc {
@@ -109,7 +107,7 @@ fn emit_desc(docs: &CommandDocs) -> TokenStream {
     let examples = docs.examples.as_ref().map_or_else(
         || quote_spanned! { docs.span => None },
         |examples| {
-            let examples = Literal::string(&examples);
+            let examples = Literal::string(examples);
 
             quote_spanned! { docs.span => Some(#examples) }
         },
@@ -124,7 +122,7 @@ fn emit_desc(docs: &CommandDocs) -> TokenStream {
     }
 }
 
-pub fn emit(input: &InputData) -> Result<HelpParts> {
+pub fn emit(input: &InputData) -> HelpParts {
     let topic_arms;
     let general_help;
 
@@ -143,7 +141,7 @@ pub fn emit(input: &InputData) -> Result<HelpParts> {
             let summary = docs.summary.as_ref().map_or_else(
                 || quote_spanned! { docs.span => None },
                 |summary| {
-                    let summary = Literal::string(&summary);
+                    let summary = Literal::string(summary);
 
                     quote_spanned! { docs.span => Some(#summary) }
                 },
@@ -209,5 +207,5 @@ pub fn emit(input: &InputData) -> Result<HelpParts> {
         None
     };
 
-    Ok(HelpParts { items })
+    HelpParts { items }
 }

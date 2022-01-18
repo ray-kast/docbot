@@ -4,8 +4,7 @@ use anyhow::anyhow;
 use proc_macro2::TokenStream;
 use quote::quote_spanned;
 
-#[allow(clippy::wildcard_imports)]
-use super::{id::IdParts, inputs::*};
+use super::{id::IdParts, inputs::prelude::*};
 use crate::{attrs, opts::FieldOpts, Result};
 
 pub struct ParseParts {
@@ -133,10 +132,9 @@ fn ctor_fields(
     let args = info.into_iter().map(|FieldInfo { opts, name, mode }| {
         (name, match mode {
             FieldMode::Required => quote_spanned! { span =>
-                #[allow(clippy::or_fun_call)]
                 #iter
                     .next()
-                    .ok_or(::docbot::CommandParseError::MissingRequired(
+                    .ok_or_else(|| ::docbot::CommandParseError::MissingRequired(
                         ::docbot::ArgumentName {
                             cmd: ::docbot::CommandId::to_str(&#id),
                             arg: #name

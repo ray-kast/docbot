@@ -1,8 +1,10 @@
-use crate::Result;
-use anyhow::anyhow;
-use proc_macro2::{Literal, TokenStream};
-use quote::{quote, ToTokens};
 use std::collections::HashMap;
+
+use anyhow::anyhow;
+use proc_macro2::{Literal, Span, TokenStream};
+use quote::{quote_spanned, ToTokens};
+
+use crate::Result;
 
 pub struct Trie<T> {
     payloads: Box<[(String, T)]>,
@@ -16,6 +18,7 @@ struct TrieNode {
     children: HashMap<char, TrieNode>,
 }
 
+#[derive(Default)]
 struct TrieNodeParts(Option<usize>, HashMap<char, TrieNodeParts>);
 
 impl<T> Trie<T> {
@@ -27,8 +30,7 @@ impl<T> Trie<T> {
             payload: usize,
             mut path: I,
             mut breadcrumb: String,
-        ) -> Result<(), anyhow::Error>
-        {
+        ) -> Result<(), anyhow::Error> {
             match path.next() {
                 None => match parts.0 {
                     None => {
@@ -79,7 +81,7 @@ impl<'a, T> TrieNodeRef<'a, T> {
         self.1
             .children
             .iter()
-            .map(move |(k, v)| (*k, TrieNodeRef(&self.0, v)))
+            .map(move |(k, v)| (*k, TrieNodeRef(self.0, v)))
     }
 
     pub fn to_lexer<
@@ -93,16 +95,17 @@ impl<'a, T> TrieNodeRef<'a, T> {
         R: Clone + Fn(Vec<&(String, T)>) -> Option<&T>,
     >(
         &self,
+        span: Span,
         iter_id: I,
         ok: O,
         no_match: N,
         ambiguous: A,
         resolve_ambiguous: R,
-    ) -> TokenStream
-    {
+    ) -> TokenStream {
         let arms = self.children().map(|(chr, child)| {
             let chr = Literal::character(chr);
             let child = child.to_lexer(
+                span,
                 iter_id.clone(),
                 ok.clone(),
                 no_match.clone(),
@@ -110,7 +113,7 @@ impl<'a, T> TrieNodeRef<'a, T> {
                 resolve_ambiguous.clone(),
             );
 
-            quote! { #chr => #child }
+            quote_spanned! { span => #chr => #child }
         });
 
         let mut payloads = self.payloads();
@@ -131,7 +134,7 @@ impl<'a, T> TrieNodeRef<'a, T> {
         };
 
         let no_match = no_match();
-        quote! {
+        quote_spanned! { span =>
             match #iter_id.next() {
                 None => #eof,
                 Some(c) => match c {
@@ -163,8 +166,4 @@ impl From<TrieNodeParts> for TrieNode {
 
         Self { payloads, children }
     }
-}
-
-impl Default for TrieNodeParts {
-    fn default() -> Self { Self(None, HashMap::new()) }
 }

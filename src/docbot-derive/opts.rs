@@ -2,7 +2,7 @@ use crate::Result;
 use anyhow::anyhow;
 use syn::{spanned::Spanned, Attribute, Meta, NestedMeta};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FieldOpts {
     pub subcommand: bool,
 }
@@ -50,10 +50,6 @@ impl ParseOpts for FieldOpts {
     }
 
     fn no_opts() -> Result<Self, anyhow::Error> { Ok(FieldOpts::default()) }
-}
-
-impl Default for FieldOpts {
-    fn default() -> Self { Self { subcommand: false } }
 }
 
 impl ParseOpts for () {

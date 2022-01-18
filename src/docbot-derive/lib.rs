@@ -40,7 +40,7 @@ fn derive_docbot_impl(input: &DeriveInput) -> Result<TokenStream> {
     let inputs = bits::inputs::assemble(input)?;
     let id_parts = bits::id::emit(&inputs)?;
     let parse_parts = bits::parse::emit(&inputs, &id_parts)?;
-    let help_parts = bits::help::emit(&inputs)?;
+    let help_parts = bits::help::emit(&inputs);
 
     // Quote variables
     let IdParts {

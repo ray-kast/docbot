@@ -1,8 +1,7 @@
 use proc_macro2::{Literal, TokenStream};
 use quote::{quote_spanned, ToTokens};
 
-#[allow(clippy::wildcard_imports)]
-use super::inputs::*;
+use super::inputs::prelude::*;
 use crate::{trie::Trie, Result};
 
 pub struct IdParts {
@@ -18,7 +17,7 @@ fn parse_no_match(span: Span, s: impl ToTokens) -> impl ToTokens {
 }
 
 fn parse_ambiguous(span: Span, s: impl ToTokens, values: Vec<&str>) -> impl ToTokens {
-    let expected = values.into_iter().map(|v| Literal::string(v));
+    let expected = values.into_iter().map(Literal::string);
 
     quote_spanned! { span => Err(::docbot::IdParseError::Ambiguous(&[#(#expected),*], #s.into())) }
 }
@@ -125,6 +124,7 @@ pub fn emit(input: &InputData) -> Result<IdParts> {
                 .map_err(|e| (e.context("failed to construct command lexer"), input.span))?
                 .root()
                 .to_lexer(
+                    input.span,
                     &parse_iter,
                     |()| quote_spanned! { input.span => Ok(#ty) },
                     || parse_no_match(input.span, &parse_s),
@@ -143,6 +143,7 @@ pub fn emit(input: &InputData) -> Result<IdParts> {
         .map_err(|e| (e.context("failed to construct command lexer"), input.span))?
         .root()
         .to_lexer(
+            input.span,
             &parse_iter,
             |i| quote_spanned! { input.span => Ok(#ty::#i) },
             || parse_no_match(input.span, &parse_s),
