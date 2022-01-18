@@ -1,3 +1,5 @@
+use std::{fmt, fmt::Write};
+
 use super::{Anyhow, ArgumentName, CommandParseError, IdParseError};
 
 /// Helper for downcasting [`anyhow::Error`] into possible `docbot` errors
@@ -91,4 +93,90 @@ pub trait FoldError {
 
     /// Handle an error that couldn't be downcast to a `docbot` error
     fn other(&self, error: Anyhow) -> Self::Output;
+}
+
+/// A basic implementation of [`FoldError`] that outputs a string describing the
+/// error.
+#[derive(Debug, Clone, Copy)]
+pub struct SimpleFoldError;
+
+impl SimpleFoldError {
+    /// Format a list of possible command options
+    ///
+    /// # Errors
+    /// This function fails if `w` throws an error when writing.
+    pub fn write_options<S: fmt::Display>(
+        mut w: impl Write,
+        opts: impl IntoIterator<Item = S>,
+    ) -> fmt::Result {
+        opts.into_iter().enumerate().try_for_each(|(i, opt)| {
+            if i != 0 {
+                write!(w, ", ")?;
+            }
+
+            write!(w, "'{}'", opt)
+        })
+    }
+}
+
+impl FoldError for SimpleFoldError {
+    type Output = Result<String, fmt::Error>;
+
+    fn no_id_match(&self, given: String, available: &'static [&'static str]) -> Self::Output {
+        let mut s = String::new();
+
+        write!(
+            s,
+            "Not sure what you mean by {:?}.  Available options are: ",
+            given
+        )?;
+
+        Self::write_options(&mut s, available)?;
+
+        Ok(s)
+    }
+
+    fn ambiguous_id(&self, possible: &'static [&'static str], given: String) -> Self::Output {
+        let mut s = String::new();
+
+        write!(s, "Not sure what you mean by {:?}.  Could be: ", given)?;
+
+        Self::write_options(&mut s, possible)?;
+
+        Ok(s)
+    }
+
+    fn no_input(&self) -> Self::Output { Ok(String::new()) }
+
+    fn missing_required(&self, cmd: &'static str, arg: &'static str) -> Self::Output {
+        Ok(format!(
+            "Missing required argument '{}' to command '{}'",
+            arg, cmd
+        ))
+    }
+
+    fn bad_convert(
+        &self,
+        cmd: &'static str,
+        arg: &'static str,
+        inner: Self::Output,
+    ) -> Self::Output {
+        Ok(format!(
+            "Couldn't parse argument '{}' of command '{}': {}",
+            arg, cmd, inner?
+        ))
+    }
+
+    fn trailing(&self, cmd: &'static str, extra: String) -> Self::Output {
+        Ok(format!(
+            "Unexpected extra argument {:?} to '{}'",
+            extra, cmd
+        ))
+    }
+
+    fn subcommand(&self, subcmd: &'static str, inner: Self::Output) -> Self::Output {
+        Ok(format!("Subcommand '{}' failed: {:?}", subcmd, inner))
+    }
+
+    fn other(&self, error: anyhow::Error) -> Self::Output { Ok(format!("{:?}", error)) }
 }

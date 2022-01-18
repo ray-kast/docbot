@@ -15,9 +15,11 @@ use std::{
 use thiserror::Error;
 
 mod fold_error;
+mod fold_help;
 mod tokenize;
 
-pub use fold_error::{Downcast, FoldError};
+pub use fold_error::{Downcast, FoldError, SimpleFoldError};
+pub use fold_help::{FoldHelp, SimpleFoldHelp};
 pub use tokenize::tokenize_str_simple;
 
 /// Error type for failures when parsing a command ID
@@ -166,5 +168,5 @@ pub trait Help: Command {
 
 /// Common traits and types used with this crate
 pub mod prelude {
-    pub use super::{Command, CommandId, Docbot, FoldError, Help};
+    pub use super::{Command, CommandId, Docbot, FoldError, FoldHelp, Help};
 }
