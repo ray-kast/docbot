@@ -1,5 +1,5 @@
 use proc_macro2::{Literal, TokenStream};
-use quote::{quote_spanned, ToTokens};
+use quote::{quote_spanned, format_ident, ToTokens};
 
 use super::inputs::prelude::*;
 use crate::{trie::Trie, Result};
@@ -52,7 +52,6 @@ fn bits<'a>(
 
     if match input.commands {
         Commands::Struct(
-            _,
             Command {
                 fields: Fields::Unit,
                 ..
@@ -71,7 +70,7 @@ fn bits<'a>(
         let vis = input.vis;
         let doc = Literal::string(&format!("Identifier for commands of type {}", input.ty));
 
-        ty = Ident::new(&format!("{}Id", input.ty), input.ty.span());
+        ty = format_ident!("{}Id", input.ty, span = input.ty.span());
 
         let data;
 
@@ -119,7 +118,7 @@ pub fn emit(input: &InputData) -> Result<IdParts> {
     let parse_iter = Ident::new("__iter", input.span);
 
     let lexer = match input.commands {
-        Commands::Struct(_, Command { ref docs, .. }) => {
+        Commands::Struct(Command { ref docs, .. }) => {
             Trie::new(docs.usage.ids.iter().map(|i| (i.to_lowercase(), ())))
                 .map_err(|e| (e.context("failed to construct command lexer"), input.span))?
                 .root()
@@ -156,7 +155,7 @@ pub fn emit(input: &InputData) -> Result<IdParts> {
     let names;
 
     match input.commands {
-        Commands::Struct(_, Command { ref docs, .. }) => {
+        Commands::Struct(Command { ref docs, .. }) => {
             let value = Literal::string(&docs.usage.ids[0]);
             to_str_arms = vec![quote_spanned! { input.span => Self => #value }];
 

@@ -239,7 +239,7 @@ pub fn emit(input: &InputData, id_parts: &IdParts) -> Result<ParseParts> {
     let id_ty = &id_parts.ty;
 
     let ctors: Vec<_> = match input.commands {
-        Commands::Struct(_, ref cmd) => {
+        Commands::Struct(ref cmd) => {
             let ctor = ctor_fields(
                 input.span,
                 cmd,

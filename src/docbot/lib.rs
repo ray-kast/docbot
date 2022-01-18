@@ -74,7 +74,7 @@ pub enum CommandParseError {
 }
 
 impl From<Infallible> for CommandParseError {
-    fn from(_: Infallible) -> CommandParseError { unreachable!() }
+    fn from(i: Infallible) -> CommandParseError { match i {} }
 }
 
 pub use anyhow::Error as Anyhow;
@@ -83,9 +83,10 @@ pub use docbot_derive::*;
 /// A parsable, identifiable command or family of commands
 pub trait Command: Sized {
     /// The type of the command ID
-    type Id;
+    type Id: CommandId;
 
     /// Try to parse a sequence of arguments as a command
+    ///
     /// # Errors
     /// Should return an error for syntax or command-not-found errors, or for
     /// any errors while parsing arguments.
@@ -96,7 +97,7 @@ pub trait Command: Sized {
 }
 
 /// A command ID, convertible to and from a string
-pub trait CommandId: FromStr + Display {
+pub trait CommandId: Copy + FromStr<Err = IdParseError> + Display {
     /// List all possible valid names that can be parsed, including aliases
     fn names() -> &'static [&'static str];
 

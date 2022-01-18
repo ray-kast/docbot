@@ -127,7 +127,7 @@ pub fn emit(input: &InputData) -> HelpParts {
     let general_help;
 
     match input.commands {
-        Commands::Struct(ref docs, _) => {
+        Commands::Struct(Command { ref docs, .. }) => {
             let usage = emit_usage(docs);
             let desc = emit_desc(docs);
 

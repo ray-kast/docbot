@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use anyhow::anyhow;
 use proc_macro2::TokenStream;
 use quote::quote_spanned;
@@ -11,9 +9,8 @@ pub mod prelude {
     pub use proc_macro2::Span;
     pub use syn::{Fields, Generics, Ident, Variant, Visibility};
 
+    pub use super::{Command, CommandVariant, Commands, InputData};
     pub use crate::docs::{CommandDocs, CommandSetDocs, CommandUsage, RestArg};
-
-    pub use super::{InputData, Commands, Command, CommandVariant};
 }
 
 use prelude::*;
@@ -28,12 +25,12 @@ pub struct InputData<'a> {
 }
 
 pub enum Commands<'a> {
-    Struct(Rc<CommandDocs>, Command<'a>),
+    Struct(Command<'a>),
     Enum(CommandSetDocs, Vec<CommandVariant<'a>>),
 }
 
 pub struct Command<'a> {
-    pub docs: Rc<CommandDocs>,
+    pub docs: CommandDocs,
     pub fields: &'a Fields,
 }
 
@@ -46,14 +43,10 @@ pub struct CommandVariant<'a> {
 
 pub fn assemble(input: &DeriveInput) -> Result<InputData> {
     let commands = match input.data {
-        Data::Struct(ref s) => {
-            let docs = Rc::new(attrs::parse_outer(&input.attrs, input.span())?);
-
-            Commands::Struct(Rc::clone(&docs), Command {
-                docs,
-                fields: &s.fields,
-            })
-        },
+        Data::Struct(ref s) => Commands::Struct(Command {
+            docs: attrs::parse_outer(&input.attrs, input.span())?,
+            fields: &s.fields,
+        }),
         Data::Enum(ref e) => Commands::Enum(
             attrs::parse_outer(&input.attrs, input.span())?,
             e.variants
@@ -74,7 +67,7 @@ pub fn assemble(input: &DeriveInput) -> Result<InputData> {
                             }
                         },
                         command: Command {
-                            docs: Rc::new(attrs::parse_variant(&v.attrs, v.span())?),
+                            docs: attrs::parse_variant(&v.attrs, v.span())?,
                             fields: &v.fields,
                         },
                         span: v.span(),
