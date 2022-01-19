@@ -35,6 +35,20 @@ pub enum IdParseError {
     Ambiguous(&'static [&'static str], String),
 }
 
+/// Error type for failures when parsing a command path
+#[derive(Error, Debug)]
+pub enum PathParseError {
+    /// The iterator returned None immediately
+    #[error("no values given for command path")]
+    NoInput,
+    /// A component command ID could not be parsed
+    #[error("failed to parse command ID")]
+    BadId(#[from] IdParseError),
+    /// Extra values were provided
+    #[error("trailing argument {0:?}")]
+    Trailing(String),
+}
+
 /// Identifies an argument to a command
 #[derive(Clone, Copy, Debug)]
 pub struct ArgumentName {
@@ -85,6 +99,9 @@ pub trait Command: Sized {
     /// The type of the command ID
     type Id: CommandId;
 
+    /// The type of a valid command path starting at this command
+    type Path: CommandPath<Id = Self::Id>;
+
     /// Try to parse a sequence of arguments as a command
     ///
     /// # Errors
@@ -103,6 +120,39 @@ pub trait CommandId: Copy + FromStr<Err = IdParseError> + Display {
 
     /// Get the canonical name for an ID
     fn to_str(&self) -> &'static str;
+}
+
+/// A chain of command IDs representing a command or subcommand
+pub trait CommandPath: From<Self::Id> {
+    /// The ID type of the first path element
+    type Id: CommandId;
+
+    /// Try to parse a sequence of arguments as a command path
+    ///
+    /// # Errors
+    /// Should return an error if any individual ID cannot be parsed correctly
+    /// or if extra values are provided.
+    fn parse<I: IntoIterator<Item = S>, S: AsRef<str>>(iter: I) -> Result<Self, PathParseError>;
+
+    /// Get the first element in this path, if present
+    fn head(&self) -> Self::Id;
+}
+
+impl<T: CommandId> CommandPath for T {
+    type Id = Self;
+
+    fn parse<I: IntoIterator<Item = S>, S: AsRef<str>>(iter: I) -> Result<Self, PathParseError> {
+        let mut iter = iter.into_iter();
+        let head = iter.next().ok_or(PathParseError::NoInput)?;
+
+        if let Some(s) = iter.next() {
+            return Err(PathParseError::Trailing(s.as_ref().into()));
+        }
+
+        head.as_ref().parse().map_err(PathParseError::BadId)
+    }
+
+    fn head(&self) -> Self::Id { *self }
 }
 
 /// Usage description for an argument
@@ -164,7 +214,7 @@ pub enum HelpTopic {
 /// A command with associated help topics
 pub trait Help: Command {
     /// Retrieve the help topic corresponding to the given ID.
-    fn help(topic: Option<Self::Id>) -> &'static HelpTopic;
+    fn help<U: Into<Self::Path>>(topic: Option<U>) -> &'static HelpTopic;
 }
 
 /// Common traits and types used with this crate

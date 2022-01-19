@@ -200,10 +200,10 @@ pub fn emit(input: &InputData) -> HelpParts {
     let items = if true {
         Some(quote_spanned! { input.span =>
             impl #impl_vars ::docbot::Help for #name #ty_vars #where_clause {
-                fn help(__topic: Option<Self::Id>) -> &'static ::docbot::HelpTopic {
+                fn help<U: Into<Self::Path>>(__topic: Option<U>) -> &'static ::docbot::HelpTopic {
                     static __GENERAL: ::docbot::HelpTopic = #general_help;
 
-                    match __topic {
+                    match __topic.map(::std::convert::Into::into) {
                         #(#topic_arms,)*
                         None => &__GENERAL,
                     }

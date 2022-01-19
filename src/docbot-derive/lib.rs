@@ -11,7 +11,7 @@ mod docs;
 mod opts;
 mod trie;
 
-use bits::{help::HelpParts, id::IdParts, parse::ParseParts};
+use bits::{help::HelpParts, id::IdParts, parse::ParseParts, path::PathParts};
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};
 use quote::quote_spanned;
@@ -39,18 +39,23 @@ pub fn derive_docbot(input: TokenStream1) -> TokenStream1 {
 fn derive_docbot_impl(input: &DeriveInput) -> Result<TokenStream> {
     let inputs = bits::inputs::assemble(input)?;
     let id_parts = bits::id::emit(&inputs);
-    let parse_parts = bits::parse::emit(&inputs, &id_parts);
+    let path_parts = bits::path::emit(&inputs, &id_parts);
+    let parse_parts = bits::parse::emit(&inputs, &id_parts, &path_parts);
     let help_parts = bits::help::emit(&inputs);
 
     // Quote variables
     let IdParts {
         items: id_items, ..
     } = id_parts;
+    let PathParts {
+        items: path_items, ..
+    } = path_parts;
     let ParseParts { items: parse_items } = parse_parts;
     let HelpParts { items: help_items } = help_parts;
 
     Ok(quote_spanned! { input.span() =>
         #id_items
+        #path_items
         #parse_items
         #help_items
     })

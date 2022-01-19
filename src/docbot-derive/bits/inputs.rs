@@ -16,7 +16,7 @@ pub mod prelude {
     };
     pub use crate::{
         docs::{CommandDocs, CommandSetDocs, CommandUsage, RestArg},
-        opts::FieldOpts,
+        opts::{CommandOpts, FieldOpts},
     };
 }
 
@@ -44,8 +44,44 @@ pub enum Commands<'a> {
 }
 
 pub struct Command {
+    pub opts: CommandOpts,
     pub docs: CommandDocs,
     pub fields: FieldInfos,
+}
+
+impl Command {
+    fn new(span: Span, opts: CommandOpts, docs: CommandDocs, fields: FieldInfos) -> Result<Self> {
+        if opts.subcommand {
+            let is_valid = match fields {
+                FieldInfos::Unit => false,
+                FieldInfos::Unnamed(ref u) => {
+                    u.len() == 1 && {
+                        let f = u.first().unwrap();
+                        !f.opts.path
+                            && matches!(f.mode, FieldMode::RestRequired | FieldMode::RestOptional)
+                    }
+                },
+                FieldInfos::Named(ref n) => {
+                    n.len() == 1 && {
+                        let (_, f) = n.first().unwrap();
+                        !f.opts.path
+                            && matches!(f.mode, FieldMode::RestRequired | FieldMode::RestOptional)
+                    }
+                },
+            };
+
+            if !is_valid {
+                return Err((
+                    anyhow!(
+                        "Invalid structure for a subcommand, should be a single rest parameter"
+                    ),
+                    span,
+                ));
+            }
+        }
+
+        Ok(Self { opts, docs, fields })
+    }
 }
 
 pub struct CommandVariant<'a> {
@@ -157,7 +193,7 @@ impl FieldInfos {
 pub fn assemble(input: &DeriveInput) -> Result<InputData> {
     let commands = match input.data {
         Data::Struct(ref s) => {
-            let docs: CommandDocs = attrs::parse_outer(&input.attrs, input.span())?;
+            let (opts, docs) = attrs::parse_command(&input.attrs, input.span())?;
             let fields = FieldInfos::new(input.span(), &docs.usage, &s.fields)?;
 
             let id_trie = Trie::new(docs.usage.ids.iter().map(|i| (i.to_lowercase(), ())))
@@ -165,17 +201,17 @@ pub fn assemble(input: &DeriveInput) -> Result<InputData> {
 
             Commands::Struct {
                 id_trie,
-                command: Command { docs, fields },
+                command: Command::new(input.span(), opts, docs, fields)?,
             }
         },
         Data::Enum(ref e) => {
-            let docs = attrs::parse_outer(&input.attrs, input.span())?;
+            let docs = attrs::parse_enum(&input.attrs, input.span())?;
 
             let variants = e
                 .variants
                 .iter()
                 .map(|v| {
-                    let docs = attrs::parse_variant(&v.attrs, v.span())?;
+                    let (opts, docs) = attrs::parse_command(&v.attrs, v.span())?;
                     let fields = FieldInfos::new(v.span(), &docs.usage, &v.fields)?;
 
                     Ok(CommandVariant {
@@ -192,7 +228,7 @@ pub fn assemble(input: &DeriveInput) -> Result<InputData> {
                                 Fields::Unit => quote_spanned! { v.span() => Self::#id },
                             }
                         },
-                        command: Command { docs, fields },
+                        command: Command::new(v.span(), opts, docs, fields)?,
                         span: v.span(),
                     })
                 })

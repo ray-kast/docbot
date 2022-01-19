@@ -27,11 +27,13 @@ pub fn emit(input: &InputData, id_parts: &IdParts) -> PathParts {
         let id_ty = &id_parts.ty;
         let doc = Literal::string(&format!("Command path for commands of type {}", input.ty));
 
+        let variants = vec![quote_spanned! { input.span => todo!() }];
+
         ty = format_ident!("{}Path", input.ty, span = input.ty.span());
         def = Some(quote_spanned! { input.span =>
             #[doc = #doc]
             #vis enum #ty {
-                #(#vars),*
+                #(#variants),*
             }
 
             impl ::std::convert::From<#id_ty> for #ty {

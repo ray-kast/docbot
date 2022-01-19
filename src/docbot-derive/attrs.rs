@@ -3,8 +3,8 @@ use proc_macro2::Span;
 use syn::{spanned::Spanned, Attribute, Lit, Meta, MetaNameValue};
 
 use crate::{
-    docs::{CommandDocs, ParseDocs},
-    opts::{FieldOpts, ParseOpts},
+    docs::{CommandDocs, CommandSetDocs, ParseDocs},
+    opts::{CommandOpts, FieldOpts, ParseOpts},
     Result,
 };
 
@@ -51,12 +51,11 @@ fn parse_core<O: ParseOpts, D: ParseDocs>(attrs: &[Attribute], span: Span) -> Re
     ))
 }
 
-pub fn parse_outer<D: ParseDocs>(attrs: &[Attribute], span: Span) -> Result<D> {
-    let ((), ret) = parse_core(attrs, span)?;
-    Ok(ret)
+pub fn parse_command(attrs: &[Attribute], span: Span) -> Result<(CommandOpts, CommandDocs)> {
+    parse_core(attrs, span)
 }
 
-pub fn parse_variant(attrs: &[Attribute], span: Span) -> Result<CommandDocs> {
+pub fn parse_enum(attrs: &[Attribute], span: Span) -> Result<CommandSetDocs> {
     let ((), ret) = parse_core(attrs, span)?;
     Ok(ret)
 }

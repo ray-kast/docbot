@@ -1,6 +1,6 @@
 [package]
 name = "docbot-derive"
-version = "0.2.0-alpha.1"
+version = "0.3.0-alpha.1"
 authors = ["raykast <rookie1286@gmail.com>"]
 edition = "2021"
 description = "Derive macros for docbot"

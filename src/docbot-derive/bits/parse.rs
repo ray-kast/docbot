@@ -1,19 +1,38 @@
 use proc_macro2::TokenStream;
 use quote::quote_spanned;
 
-use super::{id::IdParts, inputs::prelude::*};
+use super::{id::IdParts, inputs::prelude::*, path::PathParts};
 
 pub struct ParseParts {
     pub items: TokenStream,
 }
 
-fn collect_rest(span: Span, opts: &FieldOpts, name: &str, iter: &Ident, id: &Ident) -> TokenStream {
-    if opts.subcommand {
+fn collect_rest(
+    span: Span,
+    cmd_opts: &CommandOpts,
+    field_opts: &FieldOpts,
+    name: &str,
+    iter: &Ident,
+    id: &Ident,
+) -> TokenStream {
+    if cmd_opts.subcommand {
         quote_spanned! { span =>
             ::docbot::Command::parse(#iter).map_err(|e| ::docbot::CommandParseError::Subcommand(
                 ::docbot::CommandId::to_str(&#id),
                 ::std::boxed::Box::new(e),
             ))
+        }
+    } else if field_opts.path {
+        quote_spanned! { span =>
+            ::docbot::CommandPath::parse(#iter).map_err(|e| {
+                ::docbot::CommandParseError::BadConvert(
+                    ::docbot::ArgumentName {
+                        cmd: ::docbot::CommandId::to_str(&#id),
+                        arg: #name
+                    },
+                    ::docbot::Anyhow::from(e)
+                )
+            })
         }
     } else {
         quote_spanned! { span =>
@@ -36,7 +55,11 @@ fn collect_rest(span: Span, opts: &FieldOpts, name: &str, iter: &Ident, id: &Ide
 
 fn ctor_fields(
     span: Span,
-    Command { docs, fields }: &Command,
+    Command {
+        opts: cmd_opts,
+        docs,
+        fields,
+    }: &Command,
     path: TokenStream,
     iter: &Ident,
     id: &Ident,
@@ -76,7 +99,7 @@ fn ctor_fields(
         },
         FieldMode::RestRequired => {
             let peekable = Ident::new("__peek", span);
-            let collected = collect_rest(span, &opts, name, &peekable, id);
+            let collected = collect_rest(span, cmd_opts, opts, name, &peekable, id);
 
             quote_spanned! { span =>
                 {
@@ -96,7 +119,7 @@ fn ctor_fields(
             }
         },
         FieldMode::RestOptional => {
-            let collected = collect_rest(span, &opts, name, iter, id);
+            let collected = collect_rest(span, cmd_opts, opts, name, iter, id);
 
             quote_spanned! { span => #collected? }
         },
@@ -142,7 +165,7 @@ fn ctor_fields(
     }
 }
 
-pub fn emit(input: &InputData, id_parts: &IdParts) -> ParseParts {
+pub fn emit(input: &InputData, id_parts: &IdParts, path_parts: &PathParts) -> ParseParts {
     let iter = Ident::new("__iter", input.span);
     let id = Ident::new("__id", input.span);
     let id_ty = &id_parts.ty;
@@ -185,11 +208,13 @@ pub fn emit(input: &InputData, id_parts: &IdParts) -> ParseParts {
     // Quote variables
     let name = input.ty;
     let (impl_vars, ty_vars, where_clause) = input.generics.split_for_impl();
+    let path_ty = &path_parts.ty;
     let id_get_fn = &id_parts.get_fn;
 
     let items = quote_spanned! { input.span =>
         impl #impl_vars ::docbot::Command for #name #ty_vars #where_clause {
             type Id = #id_ty;
+            type Path = #path_ty;
 
             fn parse<
                 I: IntoIterator<Item = S>,

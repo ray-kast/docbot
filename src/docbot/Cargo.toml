@@ -1,6 +1,6 @@
 [package]
 name = "docbot"
-version = "0.2.1-alpha.1"
+version = "0.3.0-alpha.1"
 authors = ["raykast <rookie1286@gmail.com>"]
 edition = "2021"
 description = "Define a chatbot or REPL interface via doc comments"
@@ -16,7 +16,7 @@ path = "lib.rs"
 
 [dependencies]
 anyhow = "1.0.52"
-docbot-derive = { version = "0.2.0-alpha.1", path = "../docbot-derive" }
+docbot-derive = { version = "0.3.0-alpha.1", path = "../docbot-derive" }
 lazy_static = "1.4.0"
 regex = "1.5.4"
 thiserror = "1.0.30"
