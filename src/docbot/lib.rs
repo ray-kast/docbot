@@ -1,4 +1,4 @@
-#![warn(missing_docs, clippy::all, clippy::pedantic)]
+#![warn(missing_docs, clippy::all, clippy::pedantic, clippy::cargo)]
 #![deny(rustdoc::broken_intra_doc_links, missing_debug_implementations)]
 #![allow(clippy::module_name_repetitions)]
 
@@ -13,10 +13,14 @@ use std::{
 
 use thiserror::Error;
 
+#[cfg(feature = "strsim")]
+mod did_you_mean;
 mod fold_error;
 mod fold_help;
 mod tokenize;
 
+#[cfg(feature = "strsim")]
+pub use did_you_mean::did_you_mean;
 pub use fold_error::{Downcast, FoldError, SimpleFoldError};
 pub use fold_help::{FoldHelp, SimpleFoldHelp};
 pub use tokenize::tokenize_str_simple;
@@ -153,7 +157,7 @@ pub trait CommandPath: From<Self::Id> {
         )
     }
 
-    /// Get the first element in this path, if present
+    /// Get the first element in this path
     fn head(&self) -> Self::Id;
 }
 

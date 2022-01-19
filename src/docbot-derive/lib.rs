@@ -1,4 +1,4 @@
-#![warn(missing_docs, clippy::all, clippy::pedantic)]
+#![warn(missing_docs, clippy::all, clippy::pedantic, clippy::cargo)]
 #![deny(rustdoc::broken_intra_doc_links, missing_debug_implementations)]
 #![allow(clippy::module_name_repetitions)]
 #![feature(proc_macro_diagnostic)]
@@ -13,8 +13,8 @@ mod opts;
 mod trie;
 
 use bits::{help::HelpParts, id::IdParts, parse::ParseParts, path::PathParts};
-use proc_macro::TokenStream as TokenStream1;
-use proc_macro2::{Span, TokenStream};
+use proc_macro::TokenStream;
+use proc_macro2::Span;
 use quote::quote_spanned;
 use syn::{parse_macro_input, spanned::Spanned, DeriveInput};
 
@@ -23,22 +23,19 @@ pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// Construct a new command or set of commands from doc comments
 #[proc_macro_derive(Docbot, attributes(docbot))]
-pub fn derive_docbot(input: TokenStream1) -> TokenStream1 {
-    let input = parse_macro_input!(input);
+pub fn derive_docbot(input: TokenStream) -> TokenStream {
+    let input: DeriveInput = parse_macro_input!(input);
 
-    match derive_docbot_impl(&input) {
-        Ok(s) => s.into(),
+    let inputs = match inputs::assemble(&input) {
+        Ok(s) => s,
         Err((e, s)) => {
             s.unwrap()
                 .error(format!("Macro execution failed:\n{:?}", e))
                 .emit();
-            TokenStream1::new()
+            return TokenStream::new();
         },
-    }
-}
+    };
 
-fn derive_docbot_impl(input: &DeriveInput) -> Result<TokenStream> {
-    let inputs = inputs::assemble(input)?;
     let id_parts = bits::id::emit(&inputs);
     let path_parts = bits::path::emit(&inputs, &id_parts);
     let parse_parts = bits::parse::emit(&inputs, &id_parts, &path_parts);
@@ -63,5 +60,5 @@ fn derive_docbot_impl(input: &DeriveInput) -> Result<TokenStream> {
 
     // eprintln!("{}", toks);
 
-    Ok(toks)
+    toks.into()
 }

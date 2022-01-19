@@ -1,6 +1,6 @@
 [package]
 name = "docbot"
-version = "0.3.0-alpha.1"
+version = "0.3.1-alpha.1"
 authors = ["raykast <rookie1286@gmail.com>"]
 edition = "2021"
 description = "Define a chatbot or REPL interface via doc comments"
@@ -9,6 +9,10 @@ repository = "https://github.com/ray-kast/docbot"
 license = "MIT OR Apache-2.0"
 keywords = ["chatbot", "repl"]
 category = ["command-line-interface", "parsing"]
+
+[features]
+default = ["did-you-mean"]
+did-you-mean = ["strsim"]
 
 [lib]
 name = "docbot"
@@ -19,4 +23,5 @@ anyhow = "1.0.52"
 docbot-derive = { version = "0.3.0-alpha.1", path = "../docbot-derive" }
 lazy_static = "1.4.0"
 regex = "1.5.4"
+strsim = { version = "0.10.0", optional = true }
 thiserror = "1.0.30"

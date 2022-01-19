@@ -117,19 +117,34 @@ impl SimpleFoldError {
     }
 }
 
+#[cfg(feature = "strsim")]
+use crate::did_you_mean;
+
+/// Stub out did_you_mean when not available
+#[cfg(not(feature = "strsim"))]
+fn did_you_mean(_: impl std::any::Any, _: impl std::any::Any) -> std::iter::Empty<String> {
+    std::iter::empty()
+}
+
 impl FoldError for SimpleFoldError {
     type Output = Result<String, fmt::Error>;
 
     fn no_id_match(&self, given: String, available: &'static [&'static str]) -> Self::Output {
         let mut s = String::new();
 
-        write!(
-            s,
-            "Not sure what you mean by {:?}.  Available options are: ",
-            given
-        )?;
+        write!(s, "Not sure what you mean by {:?}.", given)?;
 
-        Self::write_options(&mut s, available)?;
+        let mut dym = did_you_mean(given, available).peekable();
+
+        if dym.peek().is_some() {
+            s.push_str("  Did you mean: ");
+
+            Self::write_options(&mut s, dym)?;
+        } else if !available.is_empty() {
+            s.push_str("  Available options are: ");
+
+            Self::write_options(&mut s, available)?;
+        }
 
         Ok(s)
     }
