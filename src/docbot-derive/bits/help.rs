@@ -1,6 +1,7 @@
 use proc_macro2::{Literal, TokenStream};
 use quote::quote_spanned;
 
+use super::path::PathParts;
 use crate::inputs::prelude::*;
 
 pub struct HelpParts {
@@ -122,13 +123,31 @@ fn emit_desc(docs: &CommandDocs) -> TokenStream {
     }
 }
 
-pub fn emit(input: &InputData) -> HelpParts {
+fn get_topic_pats(
+    span: Span,
+    cmd: &Command,
+    topic: TokenStream,
+) -> (Option<TokenStream>, TokenStream) {
+    if cmd.opts.subcommand {
+        let ty = cmd.fields.iter().next().unwrap().ty;
+
+        (
+            Some(quote_spanned! { span => (__path) }),
+            quote_spanned! { span => <#ty as ::docbot::Help>::help(__path.map(|p| *p)) },
+        )
+    } else {
+        (None, topic)
+    }
+}
+
+pub fn emit(input: &InputData, path_parts: &PathParts) -> HelpParts {
+    let path_ty = &path_parts.ty;
     let topic_arms;
     let general_help;
 
     match input.commands {
         Commands::Struct {
-            command: Command { ref docs, .. },
+            command: ref cmd @ Command { ref docs, .. },
             ..
         } => {
             let usage = emit_usage(docs);
@@ -138,7 +157,11 @@ pub fn emit(input: &InputData) -> HelpParts {
                 ::docbot::HelpTopic::Command(#usage, #desc)
             };
 
-            topic_arms = vec![quote_spanned! { docs.span => Some(Self::Id) => &__GENERAL }];
+            let topic = quote_spanned! { docs.span => &__GENERAL };
+
+            let (path_pat, ret) = get_topic_pats(docs.span, cmd, topic);
+
+            topic_arms = vec![quote_spanned! { docs.span => Some(#path_ty #path_pat) => { #ret } }];
         },
         Commands::Enum {
             ref docs,
@@ -171,38 +194,26 @@ pub fn emit(input: &InputData) -> HelpParts {
                     |CommandVariant {
                          span,
                          ident,
-                         command:
-                             Command {
-                                 docs, opts, fields, ..
-                             },
+                         command: cmd @ Command { docs, .. },
                          ..
                      }| {
                         let usage = emit_usage(docs);
                         let desc = emit_desc(docs);
 
-                        let (path_pat, ret) = if opts.subcommand {
-                            let ty = fields.iter().next().unwrap().ty;
+                        let topic = quote_spanned! { *span =>
+                            static __TOPIC: ::docbot::HelpTopic =
+                                ::docbot::HelpTopic::Command(
+                                    #usage,
+                                    #desc,
+                                );
 
-                            (
-                                Some(quote_spanned! { *span => (__path) }),
-                                quote_spanned! { *span =>
-                                    <#ty as ::docbot::Help>::help(__path.map(|p| *p))
-                                },
-                            )
-                        } else {
-                            (None, quote_spanned! { *span =>
-                                    static __TOPIC: ::docbot::HelpTopic =
-                                        ::docbot::HelpTopic::Command(
-                                            #usage,
-                                            #desc,
-                                        );
-
-                                &__TOPIC
-                            })
+                            &__TOPIC
                         };
 
+                        let (path_pat, ret) = get_topic_pats(*span, cmd, topic);
+
                         quote_spanned! { *span =>
-                            Some(Self::Path::#ident #path_pat) => { #ret }
+                            Some(#path_ty::#ident #path_pat) => { #ret }
                         }
                     },
                 )
@@ -217,7 +228,7 @@ pub fn emit(input: &InputData) -> HelpParts {
     let items = if true {
         Some(quote_spanned! { input.span =>
             impl #impl_vars ::docbot::Help for #name #ty_vars #where_clause {
-                fn help<U: Into<Self::Path>>(__topic: Option<U>) -> &'static ::docbot::HelpTopic {
+                fn help<U: Into<#path_ty>>(__topic: Option<U>) -> &'static ::docbot::HelpTopic {
                     static __GENERAL: ::docbot::HelpTopic = #general_help;
 
                     match __topic.map(::std::convert::Into::into) {

@@ -39,7 +39,7 @@ pub fn derive_docbot(input: TokenStream) -> TokenStream {
     let id_parts = bits::id::emit(&inputs);
     let path_parts = bits::path::emit(&inputs, &id_parts);
     let parse_parts = bits::parse::emit(&inputs, &id_parts, &path_parts);
-    let help_parts = bits::help::emit(&inputs);
+    let help_parts = bits::help::emit(&inputs, &path_parts);
 
     // Quote variables
     let IdParts {

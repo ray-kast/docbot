@@ -1,6 +1,6 @@
 use std::{fmt, fmt::Write};
 
-use super::{Anyhow, ArgumentName, CommandParseError, IdParseError};
+use super::{Anyhow, ArgumentName, CommandParseError, IdParseError, PathParseError};
 
 /// Helper for downcasting [`anyhow::Error`] into possible `docbot` errors
 #[derive(Debug)]
@@ -9,15 +9,30 @@ pub enum Downcast {
     CommandParse(CommandParseError),
     /// The error contained an [`IdParseError`]
     IdParse(IdParseError),
+    /// The error contained a [`PathParseError`]
+    PathParse(PathParseError),
     /// The error was unable to be downcast
     Other(Anyhow),
 }
 
+macro_rules! try_downcast {
+    ($id:ident => $($var:expr),+ $(,)?) => { try_downcast!(@map $id => $($var),+) };
+
+    (@map $id:ident => $then:expr, $($else:expr),+) => {
+        $id.downcast().map_or_else(try_downcast!(@cls $($else),+), $then)
+    };
+
+    (@cls $then:expr, $($else:expr),+) => { |e| try_downcast!(@map e => $then, $($else),+) };
+    (@cls $then:expr) => { $then };
+}
+
 impl From<Anyhow> for Downcast {
     fn from(anyhow: Anyhow) -> Self {
-        anyhow.downcast().map_or_else(
-            |e| e.downcast().map_or_else(Self::Other, Self::IdParse),
+        try_downcast!(anyhow =>
             Self::CommandParse,
+            Self::IdParse,
+            Self::PathParse,
+            Self::Other,
         )
     }
 }
@@ -32,6 +47,7 @@ pub trait FoldError {
         match err.into() {
             Downcast::CommandParse(c) => self.fold_command_parse(c),
             Downcast::IdParse(i) => self.fold_id_parse(i),
+            Downcast::PathParse(p) => self.fold_path_parse(p),
             Downcast::Other(o) => self.other(o),
         }
     }
@@ -44,19 +60,30 @@ pub trait FoldError {
         }
     }
 
+    /// Handle a [`PathParseError`]
+    fn fold_path_parse(&self, err: PathParseError) -> Self::Output {
+        match err {
+            PathParseError::Incomplete(available) => self.incomplete_path(available),
+            PathParseError::BadId(err) => self.bad_path_id(err),
+            PathParseError::Trailing(extra) => self.trailing_path(extra),
+        }
+    }
+
     /// Handle a [`CommandParseError`]
     fn fold_command_parse(&self, err: CommandParseError) -> Self::Output {
         match err {
             CommandParseError::NoInput => self.no_input(),
-            CommandParseError::BadId(i) => self.bad_id(i),
+            CommandParseError::BadId(err) => self.bad_id(err),
             CommandParseError::MissingRequired(ArgumentName { cmd, arg }) => {
                 self.missing_required(cmd, arg)
             },
-            CommandParseError::BadConvert(ArgumentName { cmd, arg }, e) => {
-                self.bad_convert(cmd, arg, self.fold_anyhow(e))
+            CommandParseError::BadConvert(ArgumentName { cmd, arg }, err) => {
+                self.bad_convert(cmd, arg, self.fold_anyhow(err))
             },
-            CommandParseError::Trailing(c, t) => self.trailing(c, t),
-            CommandParseError::Subcommand(s, e) => self.subcommand(s, self.fold_command_parse(*e)),
+            CommandParseError::Trailing(cmd, extra) => self.trailing(cmd, extra),
+            CommandParseError::Subcommand(subcmd, err) => {
+                self.subcommand(subcmd, self.fold_command_parse(*err))
+            },
         }
     }
 
@@ -65,6 +92,15 @@ pub trait FoldError {
 
     /// Handle a value of [`IdParseError::Ambiguous`]
     fn ambiguous_id(&self, possible: &'static [&'static str], given: String) -> Self::Output;
+
+    /// Handle a value of [`PathParseError::NoInput`]
+    fn incomplete_path(&self, possible: &'static [&'static str]) -> Self::Output;
+
+    /// Handle a value of [`PathParseError::BadId`]
+    fn bad_path_id(&self, err: IdParseError) -> Self::Output { self.fold_id_parse(err) }
+
+    /// Handle a value of [`PathParseError::Trailing`]
+    fn trailing_path(&self, extra: String) -> Self::Output;
 
     /// Handle a value of [`CommandParseError::NoInput`]
     fn no_input(&self) -> Self::Output;
@@ -159,6 +195,20 @@ impl FoldError for SimpleFoldError {
         Ok(s)
     }
 
+    fn incomplete_path(&self, possible: &'static [&'static str]) -> Self::Output {
+        let mut s = String::new();
+
+        write!(s, "Incomplete command path, expected one of: ")?;
+
+        Self::write_options(&mut s, possible)?;
+
+        Ok(s)
+    }
+
+    fn trailing_path(&self, extra: String) -> Self::Output {
+        Ok(format!("Unexpected extra path argument {:?}", extra))
+    }
+
     fn no_input(&self) -> Self::Output { Ok(String::new()) }
 
     fn missing_required(&self, cmd: &'static str, arg: &'static str) -> Self::Output {
@@ -188,7 +238,7 @@ impl FoldError for SimpleFoldError {
     }
 
     fn subcommand(&self, subcmd: &'static str, inner: Self::Output) -> Self::Output {
-        Ok(format!("Subcommand '{}' failed: {:?}", subcmd, inner))
+        Ok(format!("Subcommand '{}' failed: {}", subcmd, inner?))
     }
 
     fn other(&self, error: anyhow::Error) -> Self::Output { Ok(format!("{:?}", error)) }

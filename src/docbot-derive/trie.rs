@@ -77,7 +77,7 @@ impl<'a, T> TrieNodeRef<'a, T> {
         self.1.payloads.iter().map(move |i| &self.0.payloads[*i])
     }
 
-    pub fn children(&'a self) -> impl Iterator<Item = (char, TrieNodeRef<'a, T>)> {
+    pub fn children(&'a self) -> impl ExactSizeIterator<Item = (char, TrieNodeRef<'a, T>)> {
         self.1
             .children
             .iter()
@@ -134,13 +134,22 @@ impl<'a, T> TrieNodeRef<'a, T> {
         };
 
         let no_match = no_match();
+
+        let non_eof = if arms.len() == 0 {
+            quote_spanned! { span => (_) => #no_match }
+        } else {
+            quote_spanned! { span =>
+                (c) => match c {
+                    #(#arms,)*
+                    _ => #no_match,
+                }
+            }
+        };
+
         quote_spanned! { span =>
             match #iter_id.next() {
                 None => #eof,
-                Some(c) => match c {
-                    #(#arms,)*
-                    _ => #no_match,
-                },
+                Some #non_eof,
             }
         }
     }

@@ -244,7 +244,7 @@ pub fn emit(input: &InputData, id_parts: &IdParts, path_parts: &PathParts) -> Pa
                 })
             }
 
-            fn id(&self) -> Self::Id { #id_get_fn }
+            fn id(&self) -> #id_ty { #id_get_fn }
         }
     };
 

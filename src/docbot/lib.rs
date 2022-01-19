@@ -42,8 +42,8 @@ pub enum IdParseError {
 #[derive(Error, Debug)]
 pub enum PathParseError {
     /// The iterator returned None immediately
-    #[error("no values given for command path")]
-    NoInput,
+    #[error("no values given for command path, expected one of {}", .0.join(", "))]
+    Incomplete(&'static [&'static str]),
     /// A component command ID could not be parsed
     #[error("failed to parse command ID")]
     BadId(#[from] IdParseError),
@@ -150,7 +150,7 @@ pub trait CommandPath: From<Self::Id> {
     ) -> Result<Option<Self>, PathParseError> {
         Self::parse(iter).map_or_else(
             |e| match e {
-                PathParseError::NoInput => Ok(None),
+                PathParseError::Incomplete(_) => Ok(None),
                 e => Err(e),
             },
             |p| Ok(Some(p)),
@@ -166,7 +166,9 @@ impl<T: CommandId> CommandPath for T {
 
     fn parse<I: IntoIterator<Item = S>, S: AsRef<str>>(iter: I) -> Result<Self, PathParseError> {
         let mut iter = iter.into_iter();
-        let head = iter.next().ok_or(PathParseError::NoInput)?;
+        let head = iter
+            .next()
+            .ok_or_else(|| PathParseError::Incomplete(Self::Id::names()))?;
 
         if let Some(s) = iter.next() {
             return Err(PathParseError::Trailing(s.as_ref().into()));

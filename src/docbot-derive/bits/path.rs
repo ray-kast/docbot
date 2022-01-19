@@ -10,32 +10,36 @@ pub struct PathParts {
     pub items: TokenStream,
 }
 
-fn get_subcommand<'a>(command: &'a Command<'a>) -> Option<&'a FieldInfo<'a>> {
+fn get_pats(
+    span: Span,
+    iter: &Ident,
+    command: &Command,
+) -> (
+    Option<TokenStream>,
+    Option<TokenStream>,
+    Option<TokenStream>,
+    Option<TokenStream>,
+) {
     if command.opts.subcommand {
-        Some(command.fields.iter().next().unwrap())
+        let field = command.fields.iter().next().unwrap();
+        let inner = field.ty;
+
+        (
+            Some(quote_spanned! { span => (Option<Box<<#inner as ::docbot::Command>::Path>>) }),
+            Some(
+                quote_spanned! { span => (::docbot::CommandPath::parse_opt(#iter)?.map(Box::new)) },
+            ),
+            Some(quote_spanned! { span => (..) }),
+            Some(quote_spanned! { span => (None) }),
+        )
     } else {
-        None
+        (None, None, None, None)
     }
-}
-
-fn fields_pat(span: Span, field: &FieldInfo) -> TokenStream {
-    let inner = field.ty;
-
-    quote_spanned! { span => (Option<Box<<#inner as ::docbot::Command>::Path>>) }
-}
-
-fn parse_inner(span: Span, iter: &Ident) -> TokenStream {
-    quote_spanned! { span =>
-        (::docbot::CommandPath::parse_opt(#iter)?.map(Box::new))
-    }
-}
-
-fn blank_pat(span: Span) -> TokenStream {
-    quote_spanned! { span => (..) }
 }
 
 fn handle_variant(
     input_ty: &Ident,
+    id_ty: &Ident,
     iter: &Ident,
     CommandVariant {
         ident,
@@ -43,24 +47,19 @@ fn handle_variant(
         span,
         ..
     }: &CommandVariant,
-) -> (TokenStream, (TokenStream, TokenStream)) {
+) -> (TokenStream, (TokenStream, (TokenStream, TokenStream))) {
     let doc = Literal::string(&format!("Path for {}::{}", input_ty, ident));
 
-    let (var_pat, parse_pat, head_pat) = get_subcommand(command)
-        .map(|field| {
-            (
-                fields_pat(*span, field),
-                parse_inner(*span, iter),
-                blank_pat(*span),
-            )
-        })
-        .map_or((None, None, None), |(a, b, c)| (Some(a), Some(b), Some(c)));
+    let (var_pat, parse_pat, head_pat, from_id_pat) = get_pats(*span, iter, command);
 
     (
         quote_spanned! { *span => #[doc = #doc] #ident #var_pat },
         (
-            quote_spanned! { *span => Self::Id::#ident => Self::#ident #parse_pat },
-            quote_spanned! { *span => Self::#ident #head_pat => Self::Id::#ident },
+            quote_spanned! { *span => #id_ty::#ident => Self::#ident #parse_pat },
+            (
+                quote_spanned! { *span => Self::#ident #head_pat => #id_ty::#ident },
+                quote_spanned! { *span => #id_ty::#ident => Self::#ident #from_id_pat },
+            ),
         ),
     )
 }
@@ -85,32 +84,31 @@ pub fn emit(input: &InputData, id_parts: &IdParts) -> PathParts {
         let def_body;
         let parse;
         let head;
+        let from_id;
 
         match input.commands {
             Commands::Struct { ref command, .. } => {
-                let (body_pat, parse_pat, head_pat) = get_subcommand(command)
-                    .map(|field| {
-                        (
-                            fields_pat(input.span, field),
-                            parse_inner(input.span, &iter),
-                            blank_pat(input.span),
-                        )
-                    })
-                    .map_or((None, None, None), |(a, b, c)| (Some(a), Some(b), Some(c)));
+                let (body_pat, parse_pat, head_pat, from_id_pat) =
+                    get_pats(input.span, &iter, command);
 
                 def_body = quote_spanned! { input.span => struct #ty #body_pat; };
-                parse = quote_spanned! { input.span => Self::Id => Self #parse_pat };
-                head = quote_spanned! { input.span => Self #head_pat => Self::Id };
+                parse = quote_spanned! { input.span => #id_ty => Self #parse_pat };
+                head = quote_spanned! { input.span => Self #head_pat => #id_ty };
+                from_id = quote_spanned! { input.span => #id_ty => Self #from_id_pat };
             },
             Commands::Enum { ref variants, .. } => {
-                let (path_vars, (parse_vars, head_vars)): (Vec<_>, (Vec<_>, Vec<_>)) = variants
+                let (path_vars, (parse_vars, (head_vars, from_id_vars))): (
+                    Vec<_>,
+                    (Vec<_>, (Vec<_>, Vec<_>)),
+                ) = variants
                     .iter()
-                    .map(|v| handle_variant(input.ty, &iter, v))
+                    .map(|v| handle_variant(input.ty, id_ty, &iter, v))
                     .unzip();
 
                 def_body = quote_spanned! { input.span => enum #ty { #(#path_vars),* } };
                 parse = quote_spanned! { input.span => #(#parse_vars),* };
                 head = quote_spanned! { input.span => #(#head_vars),* };
+                from_id = quote_spanned! { input.span => #(#from_id_vars),* };
             },
         }
 
@@ -128,22 +126,20 @@ pub fn emit(input: &InputData, id_parts: &IdParts) -> PathParts {
 
                     Ok(match #iter
                        .next()
-                       .ok_or(::docbot::PathParseError::NoInput)?
+                       .ok_or_else(|| {
+                           ::docbot::PathParseError::Incomplete(#id_ty::names())
+                       })?
                        .as_ref()
                        .parse()? {
                         #parse
                     })
                 }
 
-                fn head(&self) -> #id_ty {
-                    match self {
-                        #head
-                    }
-                }
+                fn head(&self) -> #id_ty { match self { #head } }
             }
 
             impl ::std::convert::From<#id_ty> for #ty {
-                fn from(id: #id_ty) -> Self { todo!() }
+                fn from(id: #id_ty) -> Self { match id { #from_id } }
             }
         });
     }
