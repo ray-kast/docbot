@@ -1,7 +1,6 @@
 #![warn(missing_docs, clippy::all, clippy::pedantic)]
 #![deny(rustdoc::broken_intra_doc_links, missing_debug_implementations)]
 #![allow(clippy::module_name_repetitions)]
-#![feature(box_into_inner)]
 
 //! Create a chatbot command interface using a docopt-like API
 
@@ -91,7 +90,9 @@ impl From<Infallible> for CommandParseError {
     fn from(i: Infallible) -> CommandParseError { match i {} }
 }
 
+#[doc(no_inline)]
 pub use anyhow::Error as Anyhow;
+#[doc(inline)]
 pub use docbot_derive::*;
 
 /// A parsable, identifiable command or family of commands
@@ -133,6 +134,24 @@ pub trait CommandPath: From<Self::Id> {
     /// Should return an error if any individual ID cannot be parsed correctly
     /// or if extra values are provided.
     fn parse<I: IntoIterator<Item = S>, S: AsRef<str>>(iter: I) -> Result<Self, PathParseError>;
+
+    /// Try to parse a sequence of arguments as a command path, returning `None`
+    /// if no input was given
+    ///
+    /// # Errors
+    /// This function should return the same errors as [`parse`](Self::parse)
+    /// but never [`NoInput`](PathParseError::NoInput)
+    fn parse_opt<I: IntoIterator<Item = S>, S: AsRef<str>>(
+        iter: I,
+    ) -> Result<Option<Self>, PathParseError> {
+        Self::parse(iter).map_or_else(
+            |e| match e {
+                PathParseError::NoInput => Ok(None),
+                e => Err(e),
+            },
+            |p| Ok(Some(p)),
+        )
+    }
 
     /// Get the first element in this path, if present
     fn head(&self) -> Self::Id;

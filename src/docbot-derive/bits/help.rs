@@ -1,7 +1,7 @@
 use proc_macro2::{Literal, TokenStream};
 use quote::quote_spanned;
 
-use super::inputs::prelude::*;
+use crate::inputs::prelude::*;
 
 pub struct HelpParts {
     pub items: Option<TokenStream>,
@@ -171,21 +171,38 @@ pub fn emit(input: &InputData) -> HelpParts {
                     |CommandVariant {
                          span,
                          ident,
-                         command: Command { docs, .. },
+                         command:
+                             Command {
+                                 docs, opts, fields, ..
+                             },
                          ..
                      }| {
                         let usage = emit_usage(docs);
                         let desc = emit_desc(docs);
 
-                        quote_spanned! { *span =>
-                            Some(Self::Id::#ident) => {
-                                static __TOPIC: ::docbot::HelpTopic = ::docbot::HelpTopic::Command(
-                                    #usage,
-                                    #desc,
-                                );
+                        let (path_pat, ret) = if opts.subcommand {
+                            let ty = fields.iter().next().unwrap().ty;
+
+                            (
+                                Some(quote_spanned! { *span => (__path) }),
+                                quote_spanned! { *span =>
+                                    <#ty as ::docbot::Help>::help(__path.map(|p| *p))
+                                },
+                            )
+                        } else {
+                            (None, quote_spanned! { *span =>
+                                    static __TOPIC: ::docbot::HelpTopic =
+                                        ::docbot::HelpTopic::Command(
+                                            #usage,
+                                            #desc,
+                                        );
 
                                 &__TOPIC
-                            }
+                            })
+                        };
+
+                        quote_spanned! { *span =>
+                            Some(Self::Path::#ident #path_pat) => { #ret }
                         }
                     },
                 )

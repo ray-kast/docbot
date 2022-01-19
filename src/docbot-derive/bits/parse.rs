@@ -1,7 +1,8 @@
 use proc_macro2::TokenStream;
 use quote::quote_spanned;
 
-use super::{id::IdParts, inputs::prelude::*, path::PathParts};
+use super::{id::IdParts, path::PathParts};
+use crate::inputs::prelude::*;
 
 pub struct ParseParts {
     pub items: TokenStream,
@@ -10,6 +11,7 @@ pub struct ParseParts {
 fn collect_rest(
     span: Span,
     cmd_opts: &CommandOpts,
+    field_mode: &FieldMode,
     field_opts: &FieldOpts,
     name: &str,
     iter: &Ident,
@@ -23,8 +25,14 @@ fn collect_rest(
             ))
         }
     } else if field_opts.path {
+        let parse = if field_mode.required() {
+            quote_spanned! { span => parse }
+        } else {
+            quote_spanned! { span => parse_opt }
+        };
+
         quote_spanned! { span =>
-            ::docbot::CommandPath::parse(#iter).map_err(|e| {
+            ::docbot::CommandPath::#parse(#iter).map_err(|e| {
                 ::docbot::CommandParseError::BadConvert(
                     ::docbot::ArgumentName {
                         cmd: ::docbot::CommandId::to_str(&#id),
@@ -59,12 +67,15 @@ fn ctor_fields(
         opts: cmd_opts,
         docs,
         fields,
+        ..
     }: &Command,
     path: TokenStream,
     iter: &Ident,
     id: &Ident,
 ) -> TokenStream {
-    let process_arg = |FieldInfo { opts, name, mode }: &FieldInfo| match mode {
+    let process_arg = |FieldInfo {
+                           opts, name, mode, ..
+                       }: &FieldInfo| match mode {
         FieldMode::Required => quote_spanned! { span =>
             #iter
                 .next()
@@ -99,7 +110,7 @@ fn ctor_fields(
         },
         FieldMode::RestRequired => {
             let peekable = Ident::new("__peek", span);
-            let collected = collect_rest(span, cmd_opts, opts, name, &peekable, id);
+            let collected = collect_rest(span, cmd_opts, mode, opts, name, &peekable, id);
 
             quote_spanned! { span =>
                 {
@@ -119,7 +130,7 @@ fn ctor_fields(
             }
         },
         FieldMode::RestOptional => {
-            let collected = collect_rest(span, cmd_opts, opts, name, iter, id);
+            let collected = collect_rest(span, cmd_opts, mode, opts, name, iter, id);
 
             quote_spanned! { span => #collected? }
         },
@@ -222,10 +233,11 @@ pub fn emit(input: &InputData, id_parts: &IdParts, path_parts: &PathParts) -> Pa
             >(#iter: I) -> ::std::result::Result<Self, ::docbot::CommandParseError> {
                 let mut #iter = #iter.into_iter().fuse();
 
-                let #id: #id_ty = match #iter.next() {
-                    Some(__str) => __str.as_ref().parse()?,
-                    None => return Err(::docbot::CommandParseError::NoInput),
-                };
+                let #id: #id_ty = #iter
+                   .next()
+                   .ok_or(::docbot::CommandParseError::NoInput)?
+                   .as_ref()
+                   .parse()?;
 
                 Ok(match #id {
                     #(#ctors),*

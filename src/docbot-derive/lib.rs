@@ -8,6 +8,7 @@
 mod attrs;
 mod bits;
 mod docs;
+mod inputs;
 mod opts;
 mod trie;
 
@@ -37,7 +38,7 @@ pub fn derive_docbot(input: TokenStream1) -> TokenStream1 {
 }
 
 fn derive_docbot_impl(input: &DeriveInput) -> Result<TokenStream> {
-    let inputs = bits::inputs::assemble(input)?;
+    let inputs = inputs::assemble(input)?;
     let id_parts = bits::id::emit(&inputs);
     let path_parts = bits::path::emit(&inputs, &id_parts);
     let parse_parts = bits::parse::emit(&inputs, &id_parts, &path_parts);
@@ -53,10 +54,14 @@ fn derive_docbot_impl(input: &DeriveInput) -> Result<TokenStream> {
     let ParseParts { items: parse_items } = parse_parts;
     let HelpParts { items: help_items } = help_parts;
 
-    Ok(quote_spanned! { input.span() =>
+    let toks = quote_spanned! { input.span() =>
         #id_items
         #path_items
         #parse_items
         #help_items
-    })
+    };
+
+    // eprintln!("{}", toks);
+
+    Ok(toks)
 }

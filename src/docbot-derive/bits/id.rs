@@ -1,7 +1,7 @@
 use proc_macro2::{Literal, TokenStream};
 use quote::{format_ident, quote_spanned, ToTokens};
 
-use super::inputs::prelude::*;
+use crate::inputs::prelude::*;
 
 pub struct IdParts {
     pub ty: Ident,
@@ -49,20 +49,11 @@ fn bits<'a>(
     let generics;
     let get_fn;
 
-    if match input.commands {
-        Commands::Struct {
-            command:
-                Command {
-                    fields: FieldInfos::Unit,
-                    ..
-                },
-            ..
-        } => true,
-        Commands::Struct { .. } => false,
-        Commands::Enum { ref variants, .. } => variants
-            .iter()
-            .all(|v| matches!(v.command.fields, FieldInfos::Unit)),
-    } {
+    if input
+        .commands
+        .iter()
+        .all(|c| matches!(c.fields, FieldInfos::Unit))
+    {
         ty = input.ty.clone();
         def = None;
         generics = Some(input.generics);

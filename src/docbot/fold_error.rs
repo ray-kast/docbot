@@ -56,9 +56,7 @@ pub trait FoldError {
                 self.bad_convert(cmd, arg, self.fold_anyhow(e))
             },
             CommandParseError::Trailing(c, t) => self.trailing(c, t),
-            CommandParseError::Subcommand(s, e) => {
-                self.subcommand(s, self.fold_command_parse(Box::into_inner(e)))
-            },
+            CommandParseError::Subcommand(s, e) => self.subcommand(s, self.fold_command_parse(*e)),
         }
     }
 
