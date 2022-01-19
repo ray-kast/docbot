@@ -1,6 +1,7 @@
-use crate::Result;
 use anyhow::anyhow;
 use syn::{spanned::Spanned, Attribute, Meta, NestedMeta};
+
+use crate::Result;
 
 #[derive(Debug, Default)]
 pub struct FieldOpts {
@@ -33,7 +34,7 @@ impl ParseOpts for FieldOpts {
                             return Err((
                                 anyhow!("unexpected value in #[docbot] attribute"),
                                 i.span(),
-                            ))
+                            ));
                         },
                     }
                 }
@@ -42,7 +43,7 @@ impl ParseOpts for FieldOpts {
                 return Err((
                     anyhow!("invalid #[docbot] attribute format, expected #[docbot(...)]",),
                     attr.span(),
-                ))
+                ));
             },
         }
 

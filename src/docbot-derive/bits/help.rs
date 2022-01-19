@@ -127,7 +127,10 @@ pub fn emit(input: &InputData) -> HelpParts {
     let general_help;
 
     match input.commands {
-        Commands::Struct(Command { ref docs, .. }) => {
+        Commands::Struct {
+            command: Command { ref docs, .. },
+            ..
+        } => {
             let usage = emit_usage(docs);
             let desc = emit_desc(docs);
 
@@ -137,7 +140,11 @@ pub fn emit(input: &InputData) -> HelpParts {
 
             topic_arms = vec![quote_spanned! { docs.span => Some(Self::Id) => &__GENERAL }];
         },
-        Commands::Enum(ref docs, ref vars) => {
+        Commands::Enum {
+            ref docs,
+            ref variants,
+            ..
+        } => {
             let summary = docs.summary.as_ref().map_or_else(
                 || quote_spanned! { docs.span => None },
                 |summary| {
@@ -147,7 +154,7 @@ pub fn emit(input: &InputData) -> HelpParts {
                 },
             );
 
-            let commands = vars.iter().map(
+            let commands = variants.iter().map(
                 |CommandVariant {
                      command: Command { docs, .. },
                      ..
@@ -158,7 +165,7 @@ pub fn emit(input: &InputData) -> HelpParts {
                 ::docbot::HelpTopic::CommandSet(#summary, &[#(#commands),*])
             };
 
-            topic_arms = vars
+            topic_arms = variants
                 .iter()
                 .map(
                     |CommandVariant {

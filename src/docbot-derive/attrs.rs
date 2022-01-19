@@ -1,11 +1,12 @@
+use anyhow::{anyhow, Context};
+use proc_macro2::Span;
+use syn::{spanned::Spanned, Attribute, Lit, Meta, MetaNameValue};
+
 use crate::{
     docs::{CommandDocs, ParseDocs},
     opts::{FieldOpts, ParseOpts},
     Result,
 };
-use anyhow::{anyhow, Context};
-use proc_macro2::Span;
-use syn::{spanned::Spanned, Attribute, Lit, Meta, MetaNameValue};
 
 fn parse_core<O: ParseOpts, D: ParseDocs>(attrs: &[Attribute], span: Span) -> Result<(O, D)> {
     let mut opts = None;

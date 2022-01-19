@@ -1,8 +1,7 @@
 use proc_macro2::{Literal, TokenStream};
-use quote::{quote_spanned, format_ident, ToTokens};
+use quote::{format_ident, quote_spanned, ToTokens};
 
 use super::inputs::prelude::*;
-use crate::{trie::Trie, Result};
 
 pub struct IdParts {
     pub ty: Ident,
@@ -51,16 +50,18 @@ fn bits<'a>(
     let get_fn;
 
     if match input.commands {
-        Commands::Struct(
-            Command {
-                fields: Fields::Unit,
-                ..
-            },
-        ) => true,
-        Commands::Struct(..) => false,
-        Commands::Enum(_, ref vars) => vars
+        Commands::Struct {
+            command:
+                Command {
+                    fields: FieldInfos::Unit,
+                    ..
+                },
+            ..
+        } => true,
+        Commands::Struct { .. } => false,
+        Commands::Enum { ref variants, .. } => variants
             .iter()
-            .all(|v| matches!(v.command.fields, Fields::Unit)),
+            .all(|v| matches!(v.command.fields, FieldInfos::Unit)),
     } {
         ty = input.ty.clone();
         def = None;
@@ -75,12 +76,12 @@ fn bits<'a>(
         let data;
 
         match input.commands {
-            Commands::Struct(..) => {
+            Commands::Struct { .. } => {
                 data = quote_spanned! { input.span => struct #ty; };
                 get_fn = quote_spanned! { input.span => #ty };
             },
-            Commands::Enum(_, ref vars) => {
-                let id_vars = vars.iter().map(|CommandVariant { span, ident, .. }| {
+            Commands::Enum { ref variants, .. } => {
+                let id_vars = variants.iter().map(|CommandVariant { span, ident, .. }| {
                     let doc = Literal::string(&format!("Identifier for {}::{}", input.ty, ident));
 
                     quote_spanned! { *span => #[doc = #doc] #ident }
@@ -88,7 +89,7 @@ fn bits<'a>(
 
                 data = quote_spanned! { input.span => enum #ty { #(#id_vars),* } };
 
-                let id_arms = vars.iter().map(
+                let id_arms = variants.iter().map(
                     |CommandVariant {
                          span, pat, ident, ..
                      }| {
@@ -111,37 +112,22 @@ fn bits<'a>(
     (ty, def, generics, get_fn)
 }
 
-pub fn emit(input: &InputData) -> Result<IdParts> {
+pub fn emit(input: &InputData) -> IdParts {
     let (ty, def, generics, get_fn) = bits(input);
 
     let parse_s = Ident::new("__str", input.span);
     let parse_iter = Ident::new("__iter", input.span);
 
     let lexer = match input.commands {
-        Commands::Struct(Command { ref docs, .. }) => {
-            Trie::new(docs.usage.ids.iter().map(|i| (i.to_lowercase(), ())))
-                .map_err(|e| (e.context("failed to construct command lexer"), input.span))?
-                .root()
-                .to_lexer(
-                    input.span,
-                    &parse_iter,
-                    |()| quote_spanned! { input.span => Ok(#ty) },
-                    || parse_no_match(input.span, &parse_s),
-                    |v| parse_ambiguous(input.span, &parse_s, v),
-                    parse_resolve_ambiguous,
-                )
-        },
-        Commands::Enum(_, ref vars) => Trie::new(vars.iter().flat_map(|v| {
-            v.command
-                .docs
-                .usage
-                .ids
-                .iter()
-                .map(move |i| (i.to_lowercase(), v.ident))
-        }))
-        .map_err(|e| (e.context("failed to construct command lexer"), input.span))?
-        .root()
-        .to_lexer(
+        Commands::Struct { ref id_trie, .. } => id_trie.root().to_lexer(
+            input.span,
+            &parse_iter,
+            |()| quote_spanned! { input.span => Ok(#ty) },
+            || parse_no_match(input.span, &parse_s),
+            |v| parse_ambiguous(input.span, &parse_s, v),
+            parse_resolve_ambiguous,
+        ),
+        Commands::Enum { ref id_trie, .. } => id_trie.root().to_lexer(
             input.span,
             &parse_iter,
             |i| quote_spanned! { input.span => Ok(#ty::#i) },
@@ -155,14 +141,17 @@ pub fn emit(input: &InputData) -> Result<IdParts> {
     let names;
 
     match input.commands {
-        Commands::Struct(Command { ref docs, .. }) => {
+        Commands::Struct {
+            command: Command { ref docs, .. },
+            ..
+        } => {
             let value = Literal::string(&docs.usage.ids[0]);
             to_str_arms = vec![quote_spanned! { input.span => Self => #value }];
 
             names = docs.usage.ids.clone();
         },
-        Commands::Enum(_, ref vars) => {
-            to_str_arms = vars
+        Commands::Enum { ref variants, .. } => {
+            to_str_arms = variants
                 .iter()
                 .map(|CommandVariant { ident, command, .. }| {
                     let value = Literal::string(&command.docs.usage.ids[0]);
@@ -170,7 +159,7 @@ pub fn emit(input: &InputData) -> Result<IdParts> {
                 })
                 .collect();
 
-            names = vars
+            names = variants
                 .iter()
                 .flat_map(|v| v.command.docs.usage.ids.iter())
                 .cloned()
@@ -217,5 +206,5 @@ pub fn emit(input: &InputData) -> Result<IdParts> {
         }
     };
 
-    Ok(IdParts { ty, items, get_fn })
+    IdParts { ty, items, get_fn }
 }
